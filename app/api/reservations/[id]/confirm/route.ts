@@ -3,13 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { checkIdempotency, storeIdempotency } from "@/lib/idempotency";
 
 export const dynamic = "force-dynamic";
+
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
-
-  
+  const { id } = await params;
   const idempotencyKey = request.headers.get("Idempotency-Key");
   const endpoint = `POST /api/reservations/${id}/confirm`;
 
@@ -35,9 +34,7 @@ export async function POST(
     return NextResponse.json({ error: "Reservation has already been released" }, { status: 409 });
   }
 
-  // Check expiry
   if (new Date() > reservation.expiresAt) {
-    // Lazily release: mark as released and restore stock
     await prisma.$transaction([
       prisma.reservation.update({
         where: { id },
@@ -53,14 +50,12 @@ export async function POST(
         data: { reserved: { decrement: reservation.quantity } },
       }),
     ]);
-
     return NextResponse.json(
       { error: "Reservation has expired and stock has been released" },
       { status: 410 }
     );
   }
 
-  // Confirm: decrement total stock (permanently) and clear the reservation hold
   const [updated] = await prisma.$transaction([
     prisma.reservation.update({
       where: { id },
