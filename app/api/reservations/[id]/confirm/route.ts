@@ -4,10 +4,16 @@ import { checkIdempotency, storeIdempotency } from "@/lib/idempotency";
 
 export const dynamic = "force-dynamic";
 
+import { NextRequest } from "next/server";
+
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+
+  // existing code
+}
   const { id } = params;
   const idempotencyKey = request.headers.get("Idempotency-Key");
   const endpoint = `POST /api/reservations/${id}/confirm`;
