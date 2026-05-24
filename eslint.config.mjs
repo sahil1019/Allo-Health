@@ -1,6 +1,3 @@
-import { defineConfig } from "eslint/config";
-import nextPlugin from "eslint-config-next";
-
-export default defineConfig([
-  ...nextPlugin(),
-]);
+/** @type {import('eslint').Linter.Config[]} */
+const config = [];
+export default config;
