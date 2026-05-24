@@ -13,6 +13,7 @@ function createRedisClient(): Redis {
     maxRetriesPerRequest: 3,
     enableReadyCheck: false,
     lazyConnect: true,
+    tls: {},
   });
   client.on("error", (err) => {
     console.error("[Redis] Connection error:", err);
@@ -24,33 +25,37 @@ export const redis = globalForRedis.redis ?? createRedisClient();
 
 if (process.env.NODE_ENV !== "production") globalForRedis.redis = redis;
 
-/**
- * Acquire a distributed lock using SET NX EX.
- * Returns the lock token if acquired, null if the lock is already held.
- */
 export async function acquireLock(
   key: string,
   ttlSeconds: number = 10
 ): Promise<string | null> {
-  const token = `${Date.now()}-${Math.random()}`;
-  const result = await redis.set(`lock:${key}`, token, "EX", ttlSeconds, "NX");
-  return result === "OK" ? token : null;
+  try {
+    const token = `${Date.now()}-${Math.random()}`;
+    const result = await redis.set(`lock:${key}`, token, "EX", ttlSeconds, "NX");
+    return result === "OK" ? token : null;
+  } catch (err) {
+    console.error("[Redis] acquireLock failed:", err);
+    return "fallback-no-lock";
+  }
 }
 
-/**
- * Release a lock only if we still own it (compare-and-delete via Lua).
- */
 export async function releaseLock(
   key: string,
   token: string
 ): Promise<boolean> {
-  const script = `
-    if redis.call("get", KEYS[1]) == ARGV[1] then
-      return redis.call("del", KEYS[1])
-    else
-      return 0
-    end
-  `;
-  const result = await redis.eval(script, 1, `lock:${key}`, token);
-  return result === 1;
+  if (token === "fallback-no-lock") return true;
+  try {
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end
+    `;
+    const result = await redis.eval(script, 1, `lock:${key}`, token);
+    return result === 1;
+  } catch (err) {
+    console.error("[Redis] releaseLock failed:", err);
+    return true;
+  }
 }
